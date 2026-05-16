@@ -1,0 +1,20 @@
+# Local environment overrides — never commit secrets
+.env
+.env.local
+*.env.local
+
+# Docker volume mounts that some IDEs sync into the tree by accident
+.data/
+volumes/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.log
+
+# Keycloak export staging (we export realm JSONs explicitly via `make keycloak-export-*`)
+keycloak/export-tmp/

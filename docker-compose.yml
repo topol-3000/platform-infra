@@ -1,0 +1,148 @@
+# platform-infra / docker-compose.yml
+# ====================================
+# Local dev stack for the SaaS Platform: Postgres 18, Valkey 8, Keycloak 26.
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up -d        (or `make up`)
+#
+# All services bind to localhost on their default ports — see .env.example
+# to change them. Data persists in named volumes; `make reset` wipes them.
+
+name: platform-infra
+
+services:
+
+  # ---------------------------------------------------------------------
+  # Postgres 18
+  # ---------------------------------------------------------------------
+  # Single cluster. Hosts both:
+  #   - `platform` database with schemas: catalog, subscription, billing,
+  #     provisioning, telemetry (per HLD §7.2)
+  #   - `keycloak` database for the Keycloak container
+  # The init script in postgres/init/01-init.sql creates both on first
+  # start (when the data volume is empty). To re-run, `make reset`.
+  postgres:
+    image: postgres:18-alpine
+    container_name: platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Locale matters for collation determinism across environments.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # `pg_isready` returns 0 once the server accepts connections AND the
+      # `platform` database is reachable.
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - platform-net
+
+  # ---------------------------------------------------------------------
+  # Valkey 8
+  # ---------------------------------------------------------------------
+  # Used by:
+  #   - Taskiq (broker for background jobs in provisioning-worker /
+  #     telemetry-worker)
+  #   - Valkey Streams (domain event bus; consumer groups per HLD §11)
+  # No password in dev. AOF on so events survive container restart.
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: platform-valkey
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes", "--save", "60", "1000"]
+    ports:
+      - "${VALKEY_HOST_PORT:-6379}:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - platform-net
+
+  # ---------------------------------------------------------------------
+  # Keycloak 26
+  # ---------------------------------------------------------------------
+  # Two realms — `customers` and `operators` — are imported from
+  # keycloak/realms/*.json on first start via --import-realm.
+  #
+  # NOTE: `start-dev` is for local development only. It disables
+  # production hardening (HTTPS not required, hostname relaxed). Staging
+  # and prod use `start` with proper KC_HOSTNAME and TLS termination.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: platform-keycloak
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- Bootstrap admin (master realm) ---
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+
+      # --- Persistent store: shared Postgres, separate `keycloak` DB ---
+      KC_DB: postgres
+      KC_DB_URL: ${KC_DB_URL}
+      KC_DB_USERNAME: ${KC_DB_USERNAME}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+
+      # --- Dev-mode networking ---
+      # Plain HTTP, listens on 0.0.0.0:8080. For prod we'll set
+      # KC_HOSTNAME, KC_PROXY_HEADERS, and TLS via the deployment.
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_LOG_LEVEL: INFO
+    command:
+      - "start-dev"
+      - "--import-realm"
+    ports:
+      - "${KEYCLOAK_HOST_PORT:-8080}:8080"
+    volumes:
+      - ./keycloak/realms:/opt/keycloak/data/import:ro
+    healthcheck:
+      # Keycloak 26 exposes /health/ready on the management interface
+      # (port 9000 by default) when KC_HEALTH_ENABLED=true. We probe via
+      # an embedded shell since the image has neither curl nor wget; bash
+      # /dev/tcp is a portable enough fallback for a container healthcheck.
+      test:
+        - "CMD-SHELL"
+        - "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - platform-net
+
+# ---------------------------------------------------------------------
+# Volumes & network
+# ---------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: platform-infra_postgres_data
+  valkey_data:
+    name: platform-infra_valkey_data
+
+networks:
+  platform-net:
+    name: platform-net
+    driver: bridge
