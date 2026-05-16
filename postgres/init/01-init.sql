@@ -46,9 +46,12 @@ COMMENT ON SCHEMA telemetry
 -- official image runs each .sql file with `psql` using -v ON_ERROR_STOP=1
 -- but without an explicit BEGIN, so this works at file-top level.
 
+-- OWNER is omitted on purpose: CREATE DATABASE defaults the owner to the
+-- executing role, which here is POSTGRES_USER (the cluster superuser).
+-- `OWNER = CURRENT_USER` would be nicer but Postgres only accepts a role
+-- name or DEFAULT here, not the CURRENT_USER keyword.
 CREATE DATABASE keycloak
-    WITH OWNER = CURRENT_USER
-         ENCODING = 'UTF8'
+    WITH ENCODING = 'UTF8'
          TEMPLATE = template0;
 
 COMMENT ON DATABASE keycloak IS 'Backing store for the Keycloak container.';
