@@ -1,0 +1,12 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "\"/home/yevhenii/.nvm/versions/node/v26.1.0/bin/node\" \"/home/yevhenii/projects/saas/platform-infra/.codex/hooks/gsd-check-update.js\""
+        }
+      ]
+    }
+  ]
+}
