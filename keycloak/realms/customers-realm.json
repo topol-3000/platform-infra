@@ -55,7 +55,7 @@
       "name": "Customer Portal (Nuxt SPA)",
       "description": "Public OAuth client for the customer-facing Nuxt 4 SPA. Uses Authorization Code + PKCE.",
       "enabled": true,
-      "publicClient": true,
+      "publicClient": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -87,6 +87,7 @@
         }
       ],
       "defaultClientScopes": [
+        "basic",
         "web-origins",
         "profile",
         "roles",
@@ -104,8 +105,8 @@
       "description": "Bearer-only resource server. Used solely for audience verification by the platform-api FastAPI service.",
       "enabled": true,
       "bearerOnly": true,
-      "publicClient": false,
-      "standardFlowEnabled": false,
+      "publicClient": true,
+      "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,

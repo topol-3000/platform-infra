@@ -110,6 +110,7 @@ services:
       # --- Dev-mode networking ---
       # Plain HTTP, listens on 0.0.0.0:8080. For prod we'll set
       # KC_HOSTNAME, KC_PROXY_HEADERS, and TLS via the deployment.
+      KC_HOSTNAME: "platform-keycloak"
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_HEALTH_ENABLED: "true"
